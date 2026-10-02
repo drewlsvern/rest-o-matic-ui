@@ -211,6 +211,57 @@ open and unmerged. None of this is on `main` or in a release. A container image 
 cannot yet download a `rest-o-matic` binary that has `status` or understands
 `!locked`. Until it is released, build the binary from those branches.
 
+## Build and release workflows
+
+Two GitHub workflows are already in `.github/workflows/`, written to mirror
+the ones in `rest-o-matic`. **Neither has ever run**: when they were written
+this repository had no .NET project, no Dockerfile and no GitHub remote. Treat
+them as a starting point and fix them against the first real run.
+
+**`ci.yml`** runs on every pull request into the default branch.
+
+- `build` restores, builds and tests the solution in Release configuration.
+  It looks for a `.sln` or `.slnx` file at the repository root, and skips
+  with a notice while there is none.
+- `container` builds the image from `Dockerfile` without pushing it, so a
+  pull request can't quietly break the release build. It skips while there
+  is no `Dockerfile`.
+
+**`release.yml`** runs when a tag starting with `v` is pushed. Releasing is a
+deliberate act, as it is in `rest-o-matic`: nothing is published because
+something merged.
+
+- The tag must be `vMAJOR.MINOR.PATCH`, optionally with a `-prerelease`
+  suffix, and its commit must be reachable from the default branch.
+- It builds a `linux/amd64` and `linux/arm64` image and pushes it to
+  `ghcr.io/<owner>/<repository>`, tagged with the version. `latest` moves
+  only for a release without a pre-release suffix.
+- It creates a GitHub release whose notes list the commits since the
+  previous tag, grouped into features, fixes and others by their
+  conventional-commit prefix. A hyphenated tag is marked as a pre-release.
+
+What the workflows expect from the project, so build it this way:
+
+- **The solution file is at the repository root.**
+- **A `Dockerfile` is at the repository root** and accepts a `VERSION` build
+  argument, which the release sets to the tag without its `v`.
+- **The Dockerfile's build stage cross-compiles.** Start it with
+  `FROM --platform=$BUILDPLATFORM ...` and publish with
+  `dotnet publish -a $TARGETARCH`, so only the small runtime stage runs
+  under emulation for arm64. Building .NET under emulation is slow and
+  unreliable.
+- **The image includes released `rest-o-matic` binaries,** matching the
+  image's architecture, because config is validated by running them.
+- **Commits follow conventional commits** (`feat(scope): ...`,
+  `fix(scope)!: ...`), which the release notes are grouped by.
+- **The .NET SDK version** is `10.0.x` in `ci.yml`. If a `global.json` is
+  added, switch the workflow to `global-json-file` so the two can't differ.
+
+Not set up, and worth doing once the repository is on GitHub: a branch
+protection rule that requires the CI check before merging. The local default
+branch is `master`, where `rest-o-matic` uses `main`; the workflows accept
+either name.
+
 ## A sensible order of work here
 
 Nothing here is decided; it is a suggestion.

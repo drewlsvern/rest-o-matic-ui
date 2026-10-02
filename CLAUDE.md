@@ -26,6 +26,11 @@ Before proposing or building anything, read:
 
 ## Working here
 
+- Commits follow conventional commits (`feat(scope): ...`, `fix(scope)!: ...`,
+  `docs: ...`). Release notes are grouped by them.
+- CI and release workflows exist in `.github/workflows/` but have never run.
+  `docs/handoff.md` lists what they expect: the solution and a `Dockerfile`
+  at the repository root.
 - Changes go through OpenSpec (`/opsx:explore`, `/opsx:propose`,
   `/opsx:apply`, `/opsx:archive`).
 - The format hosts and this app exchange is owned by `../rest-o-matic`. Do

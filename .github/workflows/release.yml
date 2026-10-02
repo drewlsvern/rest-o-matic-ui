@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          # Full history and tags: required by the ancestor check and by the
+          # release notes, which list the commits since the previous tag.
+          fetch-depth: 0
+
+      - name: Validate tag format
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' does not match the required format vMAJOR.MINOR.PATCH[-prerelease] (e.g. v1.2.3 or v1.2.3-rc.1)"
+            exit 1
+          fi
+
+      - name: Fetch the default branch for the ancestor check
+        # actions/checkout's fetch scope with a tag trigger isn't guaranteed
+        # to include a usable ref for the default branch, so fetch it
+        # explicitly rather than assume.
+        run: git fetch origin "${{ github.event.repository.default_branch }}"
+
+      - name: Verify tagged commit is an ancestor of the default branch
+        run: |
+          DEFAULT="origin/${{ github.event.repository.default_branch }}"
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "$DEFAULT"; then
+            echo "::error::Tag ${GITHUB_REF_NAME} (commit ${GITHUB_SHA}) is not reachable from ${DEFAULT} - refusing to release a commit that never went through the PR-gated build check"
+            exit 1
+          fi
+
+      - name: Work out the version
+        # v1.2.3 -> 1.2.3. A hyphenated tag (v1.2.3-rc.1) is a pre-release:
+        # it is published, but never becomes `latest`.
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU
+        # Only for the runtime stage of the arm64 image. The Dockerfile's
+        # build stage must run on the build platform and cross-compile (see
+        # docs/handoff.md); building .NET under emulation is slow and
+        # unreliable.
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ steps.version.outputs.prerelease == 'false' }}
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+
+      - name: Write release notes
+        # Commits since the previous tag, grouped by conventional-commit
+        # type: features, then fixes, then everything else.
+        run: |
+          PREVIOUS="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          RANGE="${PREVIOUS:+$PREVIOUS..}${GITHUB_REF_NAME}"
+          git log --no-merges --reverse --pretty='- %s (%h)' "$RANGE" > commits.txt
+
+          section() { # title, extra grep flags, pattern
+            if grep -E $2 "$3" commits.txt > section.txt; then
+              printf '## %s\n\n' "$1"; cat section.txt; printf '\n'
+            fi
+          }
+          {
+            section "Features"  ""   '^- feat(\(.+\))?!?:'
+            section "Bug Fixes" ""   '^- fix(\(.+\))?!?:'
+            section "Others"    "-v" '^- (feat|fix)(\(.+\))?!?:'
+            printf '## Container image\n\n```\n%s:%s\n```\n' "$IMAGE" "${{ steps.version.outputs.version }}"
+          } > notes.md
+          cat notes.md
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FLAGS=()
+          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
+            FLAGS+=(--prerelease)
+          fi
+          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-file notes.md --verify-tag "${FLAGS[@]}"

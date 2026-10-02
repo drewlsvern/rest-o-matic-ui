@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    # The default branch, whichever name it has.
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Find the solution
+        # Until the app's skeleton exists there is nothing to build. Finding
+        # the solution here, instead of hard-coding its name, lets this check
+        # pass on a docs-only repository and start working the moment a
+        # solution is added at the repository root.
+        id: solution
+        run: |
+          SOLUTION="$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \) | head -n 1)"
+          if [ -z "$SOLUTION" ]; then
+            echo "::notice::No solution file at the repository root yet; skipping build and test."
+          fi
+          echo "path=$SOLUTION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up .NET
+        if: steps.solution.outputs.path != ''
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        if: steps.solution.outputs.path != ''
+        run: dotnet restore "${{ steps.solution.outputs.path }}"
+
+      - name: Build
+        if: steps.solution.outputs.path != ''
+        run: dotnet build "${{ steps.solution.outputs.path }}" --configuration Release --no-restore
+
+      - name: Test
+        if: steps.solution.outputs.path != ''
+        run: dotnet test "${{ steps.solution.outputs.path }}" --configuration Release --no-build
+
+  container:
+    # The release publishes a container image, so a pull request must not be
+    # able to break the image build without anyone noticing until release
+    # day. Nothing is pushed here.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        if: hashFiles('Dockerfile') != ''
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        if: hashFiles('Dockerfile') != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          build-args: |
+            VERSION=0.0.0-ci
