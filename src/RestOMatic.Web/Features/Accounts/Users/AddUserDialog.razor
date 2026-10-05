@@ -1,0 +1,45 @@
+@inject IServiceScopeFactory Scopes
+
+<MudDialog>
+    <DialogContent>
+        <EditForm id="add-user" Model="_input" OnValidSubmit="AddAsync" FormName="add-user">
+            <DataAnnotationsValidator />
+            <MudStack Spacing="3">
+                <Problems Messages="_problems" />
+                <UserFields Input="_input" />
+            </MudStack>
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => Dialog.Cancel()">Cancel</MudButton>
+        <MudButton ButtonType="ButtonType.Submit" form="add-user" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Add user</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly NewUserForm _input = new();
+    private IReadOnlyList<string> _problems = [];
+    private bool _busy;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    private async Task AddAsync()
+    {
+        _busy = true;
+        try
+        {
+            var (result, _) = await Scopes.WithAccountsAsync(accounts => accounts.CreateAsync(_input.ToNewUser()));
+            _problems = result.Problems;
+            if (result.Succeeded)
+            {
+                Dialog.Close(DialogResult.Ok(true));
+            }
+        }
+        finally
+        {
+            _input.ClearPasswords();
+            _busy = false;
+        }
+    }
+}

@@ -1,0 +1,48 @@
+@inject IServiceScopeFactory Scopes
+
+<MudDialog>
+    <DialogContent>
+        <EditForm id="edit-user" Model="_input" OnValidSubmit="SaveAsync" FormName="edit-user">
+            <DataAnnotationsValidator />
+            <MudStack Spacing="3">
+                <Problems Messages="_problems" />
+                <MudTextField @bind-Value="_input.DisplayName" For="@(() => _input.DisplayName)" Immediate="true"
+                              Label="Display name (optional)" Variant="Variant.Outlined" MaxLength="AccountRules.DisplayNameMaxLength" />
+                <MudTextField @bind-Value="_input.Email" For="@(() => _input.Email)" Immediate="true"
+                              Label="Email" Variant="Variant.Outlined" InputType="InputType.Email" />
+            </MudStack>
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => Dialog.Cancel()">Cancel</MudButton>
+        <MudButton ButtonType="ButtonType.Submit" form="edit-user" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private ProfileForm _input = new();
+    private IReadOnlyList<string> _problems = [];
+    private bool _busy;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public UserSummary User { get; set; } = default!;
+
+    protected override void OnInitialized() =>
+        _input = new ProfileForm { DisplayName = User.DisplayName, Email = User.Email };
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        var result = await Scopes.WithAccountsAsync(accounts =>
+            accounts.UpdateProfileAsync(User.Id, _input.DisplayName, _input.Email));
+        _problems = result.Problems;
+        _busy = false;
+        if (result.Succeeded)
+        {
+            Dialog.Close(DialogResult.Ok(true));
+        }
+    }
+}

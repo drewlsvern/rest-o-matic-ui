@@ -1,0 +1,33 @@
+@* A user's picture, or the initials of their shown name when they have none. *@
+
+<MudAvatar Size="Size" Color="Color" title="@User.ShownName" data-testid="user-avatar">
+    @if (User.HasPicture)
+    {
+        <img src="@PictureEndpoint.UrlFor(User)" alt="" class="user-avatar-picture" />
+    }
+    else
+    {
+        @Initials(User.ShownName)
+    }
+</MudAvatar>
+
+@code {
+    [Parameter, EditorRequired]
+    public UserSummary User { get; set; } = default!;
+
+    [Parameter]
+    public Size Size { get; set; } = Size.Medium;
+
+    /// <summary>The background behind the initials.</summary>
+    [Parameter]
+    public Color Color { get; set; } = Color.Primary;
+
+    /// <summary>"Alice Smith" → "AS", "bob" → "B", "jane.doe" → "JD".</summary>
+    public static string Initials(string name)
+    {
+        var parts = name.Split([' ', '.', '_', '-', '@'], StringSplitOptions.RemoveEmptyEntries);
+        var letters = parts.Take(2).Select(part => char.ToUpperInvariant(part[0]));
+        var initials = new string([.. letters]);
+        return initials.Length > 0 ? initials : "?";
+    }
+}

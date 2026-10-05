@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-labelledby="title">
+  <title id="title">rest-o-matic</title>
+  <!-- Drawn for rest-o-matic: a 1950s "-o-matic" appliance whose dial is set to go round. -->
+
+  <!-- Legs -->
+  <rect x="58" y="138" width="14" height="16" rx="3" fill="#2E2A27"/>
+  <rect x="168" y="138" width="14" height="16" rx="3" fill="#2E2A27"/>
+
+  <!-- Cabinet -->
+  <rect x="28" y="22" width="184" height="122" rx="26" fill="#F3E7CF" stroke="#2E2A27" stroke-width="5"/>
+  <path d="M40 48 H200" stroke="#2E2A27" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+
+  <!-- Dial -->
+  <circle cx="92" cy="86" r="38" fill="#C8642A" stroke="#2E2A27" stroke-width="5"/>
+  <circle cx="92" cy="86" r="27" fill="#F3E7CF" stroke="#2E2A27" stroke-width="3"/>
+  <!-- Circular arrow: three-quarters of a turn, clockwise -->
+  <path d="M92 70 A16 16 0 1 1 76 86" fill="none" stroke="#2E2A27" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M76 75 L70 89 L82 89 Z" fill="#2E2A27"/>
+
+  <!-- Indicator lights -->
+  <circle cx="164" cy="64" r="9" fill="#6E9F6A" stroke="#2E2A27" stroke-width="3"/>
+  <circle cx="164" cy="88" r="9" fill="#E2B04A" stroke="#2E2A27" stroke-width="3"/>
+  <circle cx="164" cy="112" r="9" fill="#F3E7CF" stroke="#2E2A27" stroke-width="3"/>
+
+  <!-- Wordmark -->
+  <text x="120" y="186" text-anchor="middle"
+        font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="30" font-weight="700" letter-spacing="0.5" fill="#2E2A27">rest-o-matic</text>
+</svg>

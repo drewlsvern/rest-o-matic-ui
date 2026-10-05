@@ -1,0 +1,121 @@
+@page "/account/users"
+@inject IServiceScopeFactory Scopes
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Users · rest-o-matic</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h5">Users</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
+               OnClick="AddAsync">Add user</MudButton>
+</MudStack>
+
+<MudText Typo="Typo.body2" Class="mb-4">Everyone listed here can sign in and has the same rights.</MudText>
+
+<MudTable Items="_users" Hover="true" Dense="true" Loading="_users is null" Breakpoint="Breakpoint.Sm">
+    <HeaderContent>
+        <MudTh></MudTh>
+        <MudTh>User name</MudTh>
+        <MudTh>Display name</MudTh>
+        <MudTh>Email</MudTh>
+        <MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd><UserAvatar User="context" Size="Size.Small" /></MudTd>
+        <MudTd DataLabel="User name">@context.UserName</MudTd>
+        <MudTd DataLabel="Display name">@context.DisplayName</MudTd>
+        <MudTd DataLabel="Email">@context.Email</MudTd>
+        <MudTd Style="text-align: right">
+            <MudTooltip Text="Edit display name and email">
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" aria-label="@($"Edit {context.UserName}")"
+                               OnClick="() => EditAsync(context)" />
+            </MudTooltip>
+            <MudTooltip Text="Set password">
+                <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" aria-label="@($"Set password for {context.UserName}")"
+                               OnClick="() => SetPasswordAsync(context)" />
+            </MudTooltip>
+            @if (context.Id != _currentUserId && _users?.Count > 1)
+            {
+                <MudTooltip Text="Remove">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   aria-label="@($"Remove {context.UserName}")" OnClick="() => RemoveAsync(context)" />
+                </MudTooltip>
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    public const string Path = "/account/users";
+
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private List<UserSummary>? _users;
+    private Guid? _currentUserId;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUserId = AccountClaims.UserId((await AuthenticationState).User);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _users = await Scopes.WithAccountsAsync(accounts => accounts.ListAsync());
+
+    private async Task AddAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<AddUserDialog>("Add user", Options);
+        if (await dialog.Result is { Canceled: false })
+        {
+            Snackbar.Add("User added.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task EditAsync(UserSummary user)
+    {
+        var parameters = new DialogParameters<EditUserDialog> { { d => d.User, user } };
+        var dialog = await Dialogs.ShowAsync<EditUserDialog>($"Edit {user.UserName}", parameters, Options);
+        if (await dialog.Result is { Canceled: false })
+        {
+            Snackbar.Add("User saved.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task SetPasswordAsync(UserSummary user)
+    {
+        var parameters = new DialogParameters<SetPasswordDialog> { { d => d.User, user } };
+        var dialog = await Dialogs.ShowAsync<SetPasswordDialog>($"Set password for {user.UserName}", parameters, Options);
+        if (await dialog.Result is { Canceled: false })
+        {
+            Snackbar.Add($"Password set. {user.UserName} has been signed out everywhere.", Severity.Success);
+        }
+    }
+
+    private async Task RemoveAsync(UserSummary user)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            "Remove user",
+            $"Remove {user.UserName}? They will be signed out and can no longer sign in.",
+            yesText: "Remove", cancelText: "Cancel");
+        if (confirmed != true || _currentUserId is not { } actingUserId)
+        {
+            return;
+        }
+
+        var result = await Scopes.WithAccountsAsync(accounts => accounts.RemoveAsync(actingUserId, user.Id));
+        foreach (var problem in result.Problems)
+        {
+            Snackbar.Add(problem, Severity.Error);
+        }
+        if (result.Succeeded)
+        {
+            Snackbar.Add($"{user.UserName} removed.", Severity.Success);
+        }
+        await LoadAsync();
+    }
+}

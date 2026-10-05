@@ -23,3 +23,40 @@ h1:focus {
     .blazor-error-boundary::after {
         content: "An error has occurred."
     }
+
+/* The logo above the sign-in and setup forms. */
+.sign-in-logo {
+    display: block;
+    width: 220px;
+    max-width: 70%;
+    height: auto;
+    margin: 0 auto;
+}
+
+/* The machine without its wordmark, beside the app's name. Its cream cabinet reads on the bar's colour. */
+.app-bar-home {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.app-bar-logo {
+    height: 32px;
+    width: auto;
+}
+
+.profile-menu-activator {
+    text-transform: none;
+}
+
+.profile-menu-sign-out {
+    margin: 0;
+}
+
+.user-avatar-picture {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}

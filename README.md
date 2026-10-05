@@ -1,9 +1,8 @@
 # rest-o-matic-ui
 
 > **This project is still in development and is not ready for use.** Today
-> the app only starts, serves a placeholder page and reports its own health.
-> None of the features described below exist yet. There is no login, so do
-> not expose it beyond a network you trust.
+> you can sign in, manage the app's users and see a placeholder page. None of
+> the backup features described below exist yet.
 
 A web app for watching and managing the backups of many servers from one
 place.
@@ -70,11 +69,15 @@ it as you would treat SSH access to all of them.
 
 ## Status
 
-Done so far: the project skeleton. The app builds, runs, has tests, creates
-an empty database and can be built as a container image.
+Done so far:
 
-Not built yet: everything under [What it will do](#what-it-will-do),
-including the login.
+- The project skeleton: the app builds, runs, has tests and can be built as
+  a container image.
+- Signing in with a user name and password, and managing who can sign in.
+  Every user has the same rights. Signing in through an identity provider
+  (OIDC) is planned as a second way in.
+
+Not built yet: everything under [What it will do](#what-it-will-do).
 
 [docs/handoff.md](docs/handoff.md) lists what is planned and what is still
 missing. [docs/design/central-management.md](docs/design/central-management.md)
@@ -100,6 +103,9 @@ somewhere else:
 DataDirectory=/tmp/rest-o-matic-ui dotnet run --project src/RestOMatic.Web
 ```
 
+In Development the app accepts sign-in over plain HTTP. See
+[First run](#first-run) to create the first user.
+
 Build and test:
 
 ```sh
@@ -108,6 +114,12 @@ dotnet test rest-o-matic-ui.slnx
 ```
 
 ## Run it as a container
+
+To try it out locally with Podman, `scripts/container-up.sh` builds the
+image, starts it on <http://localhost:8180> with its data in
+`~/containers/rest-o-matic-ui/data`, and prints the setup token.
+`scripts/container-down.sh` removes the container and keeps the data. `PORT`
+and `DATA_DIR` change the defaults.
 
 The build file is `Containerfile`. With Podman:
 
@@ -133,7 +145,81 @@ user:
 podman run -d -p 8080:8080 -v /srv/rest-o-matic-ui:/data:U rest-o-matic-ui
 ```
 
-There is no login yet. Do not expose the app beyond a network you trust.
+Signing in sets a cookie marked `Secure`, which browsers only keep over
+HTTPS, with one exception: they treat `http://localhost` as secure. So
+`http://localhost:8080` works for trying the image out on your own machine,
+and anywhere else the app needs HTTPS in front of it. See
+[Behind Caddy](#behind-caddy).
+
+## First run
+
+The first time the app starts, no user exists. It writes a one-time setup
+token to its log, and every page leads to `/setup`:
+
+```sh
+podman logs rest-o-matic-ui 2>&1 | grep "setup token"
+```
+
+Open `/setup`, enter the token, and create the first user. That user is
+signed in straight away. Until setup is done the token is replaced each time
+the app starts, and once a user exists `/setup` is closed. Anyone who can
+read the log during that window could claim the app, so finish setup right
+after the first start.
+
+More users are added from **Users** in the profile menu (top right). Each
+user has a user name (which cannot change), an email address, an optional
+display name and a password. A password needs at least 12 characters, with
+a lower-case letter, an upper-case letter, a digit and a special character.
+
+Sessions are held in the app's memory: one ends after 12 hours without use,
+after 7 days at most, or when the app restarts. Restarting signs everyone
+out.
+
+## Behind Caddy
+
+TLS is not the app's job. Put a reverse proxy in front of it; Caddy is the
+one used so far. The app trusts the `X-Forwarded-For` and
+`X-Forwarded-Proto` headers that tell it the client's address and that the
+request came over HTTPS only from addresses you list. Without them every
+request seems to come from the proxy, and sign-in throttling would treat
+all users as one.
+
+With Caddy and the app in one pod, Caddy reaches the app on `127.0.0.1`:
+
+```
+# Caddyfile
+backups.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+```sh
+podman pod create --name rest-o-matic -p 443:443
+podman run -d --pod rest-o-matic --name rest-o-matic-ui \
+    -v rest-o-matic-ui-data:/data \
+    -e ReverseProxy__KnownProxies__0=127.0.0.1 \
+    rest-o-matic-ui
+podman run -d --pod rest-o-matic --name caddy \
+    -v ./Caddyfile:/etc/caddy/Caddyfile:Z -v caddy-data:/data \
+    docker.io/library/caddy:2
+```
+
+If Caddy runs in a container of its own, set `ReverseProxy__KnownProxies__0`
+to its address, or `ReverseProxy__KnownNetworks__0` to the network it is on
+(for example `10.89.0.0/24`). Headers from any other address are ignored.
+
+## Forgotten password
+
+Any signed-in user can set a new password for another user from **Users**.
+If nobody can sign in, reset a password inside the container:
+
+```sh
+podman exec rest-o-matic-ui dotnet RestOMatic.Web.dll reset-password alice
+```
+
+It prints a new password once. That user's
+existing sessions end. Sign in with the new password, then change it from
+**Profile** in the profile menu.
 
 ## Licence
 

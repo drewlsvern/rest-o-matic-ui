@@ -1,3 +1,4 @@
+using RestOMatic.Web.Features.Accounts.Setup;
 using System.Net;
 using Microsoft.Data.Sqlite;
 
@@ -50,7 +51,7 @@ public class DataDirectoryTests
             {
                 using var client = first.CreateDirectClient();
                 // Rendering a page makes the app create a data-protection key.
-                await client.GetStringAsync("/");
+                await client.GetStringAsync(SetupPage.Path);
                 keysBefore = KeyFiles(first);
                 Assert.NotEmpty(keysBefore);
                 Execute(first.DatabaseFile, "CREATE TABLE restart_marker (id INTEGER)");
@@ -59,7 +60,7 @@ public class DataDirectoryTests
             using (var second = new AppFactory(dataDirectory))
             {
                 using var client = second.CreateDirectClient();
-                await client.GetStringAsync("/");
+                await client.GetStringAsync(SetupPage.Path);
 
                 Assert.Equal(keysBefore, KeyFiles(second));
                 // Throws if the database was recreated and the table is gone.

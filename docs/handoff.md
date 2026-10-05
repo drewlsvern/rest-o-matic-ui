@@ -13,8 +13,9 @@ at the repository root, a Blazor Server and MudBlazor app in
 `src/RestOMatic.Web` organised as vertical slices, SQLite through EF Core
 with an empty database context, a `/healthz` endpoint, tests, and a
 `Containerfile`. It has no entities, no pages beyond a placeholder and no
-login, and the image does not yet contain a `rest-o-matic` binary. The
-sections below have been updated where the skeleton changed them.
+login (since added, see below), and the image does not yet contain a
+`rest-o-matic` binary. The sections below have been updated where the
+skeleton changed them.
 
 **Host side, as of 2026-10-05.** The check-in now exists, with a written
 contract, and so do JSON output from `validate` and a JSON Schema of the
@@ -22,6 +23,30 @@ config. All of it is in the pre-release **`v0.2.0-rc.1`**.
 [What the host side provides today](#what-the-host-side-provides-today) and
 [What does not exist yet](#what-does-not-exist-yet) are updated; the
 check-in endpoints can now be built against the contract.
+
+**Viewer key dropped, 2026-10-05.** File listings are no longer encrypted for
+a viewer key; encrypting them is deferred. Sign-in was password-based only
+because of that key, so how users sign in is open again: a password, an
+OIDC provider, Tailscale identity, or a mix. See
+[Browsing a snapshot](#browsing-a-snapshot) and
+[Open questions](#open-questions).
+
+**Sign-in exists, 2026-10-05** (the `password-sign-in` change). Users sign
+in with a user name and password. Sessions are held on the server, in
+memory: the cookie carries only a session key, a restart signs everyone out,
+and sign-out or a password change ends sessions at once. Every page and
+endpoint needs a signed-in user unless it is explicitly opened (`/healthz`,
+static assets, the sign-in flow). A new install creates its first user with
+a one-time token from the log, and `reset-password` run in the container
+recovers a lost password. Users are all equal and have a user name, an email
+(stored, not verified, never used to sign in), an optional display name and
+a profile picture. The app trusts forwarded headers only from configured
+proxy addresses (Caddy for now). The design of that change, in
+`openspec/changes/`, explains how OIDC fits in later: every sign-in method
+ends in `AccountSessions.SignInAsync`, and external logins get a table of
+their own beside the password one. **The check-in endpoints must not use the
+cookie:** they need their own bearer scheme, and the fallback policy means
+they must declare which.
 
 ## What this repository is
 
@@ -434,7 +459,8 @@ Still to come on the host side: config delivery and the action queue (steps
 
 ## Browsing a snapshot
 
-Agreed in the host design session on 2026-10-02. The full text is in
+Agreed in the host design session on 2026-10-02, and amended on 2026-10-05
+to drop the viewer key. The full text is in
 [design/central-management.md](design/central-management.md); this is what
 it means for the app.
 
@@ -454,28 +480,21 @@ queued action.
 
 **What this app has to do.**
 
-- **Store listings encrypted, under a "viewer" key.** The app creates a
-  keypair. The public half is stored as is and given to hosts, which lock
-  each listing for it. The private half is stored encrypted with a key
-  derived from the user's password.
-- **Unlock at sign-in.** The password unlocks the private half, in memory,
-  for that session only. The server then unlocks a listing and serves
-  browsing and search. On sign-out the unlocked key is discarded. Nothing is
-  typed beyond signing in.
-- **So sign-in must be password-based.** Tailscale identity or single
-  sign-on alone would give nothing to derive the key from. This constrains
-  the open question about login.
-- **Re-wrap on password change. A forgotten password is harmless:** create a
-  new viewer key and let hosts list snapshots again on demand. Listings are
-  only a cache, so this key needs no backup.
-- **Each user has their own wrapped copy** of the private half, made by a
-  signed-in user when the account is created.
-- **It is not the recovery key.** The recovery key opens repository
-  passwords and stays offline. The viewer key opens file names only.
+- **Store each listing compressed, against the snapshot's ID.** Listings
+  are not encrypted, so anyone with the database or a backup of it can read
+  the file names, like the rest of what hosts report.
+- **Treat a listing as a cache.** It can be deleted at any time; the host
+  lists the snapshot again on demand.
 
-**What it protects.** A copied database or backup, and a server disk taken
-while nobody is signed in, reveal no file names. Someone controlling the
-running server while a user is signed in can read them.
+**Encrypting listings is deferred.** The design was a "viewer" key whose
+private half the user's password unlocked at sign-in. It was dropped on
+2026-10-05 because it forced password sign-in, ruling out OIDC providers
+and Tailscale identity, for a small gain: paths and error messages already
+arrive in plain text, and anyone controlling this app can already run
+commands on every host. If it comes back, prefer one viewer key per user,
+with hosts locking each listing for every user's public key (as they do
+for `recovery_recipients`), so adding a user never needs another user to be
+signed in. See "Deferred" in the design document.
 
 **For the contract.** An action's result is uploaded by the host in a
 request of its own, as soon as the action finishes. It is not carried in the
@@ -546,15 +565,17 @@ Nothing here is decided; it is a suggestion.
 
 1. **Project skeleton.** Done. Blazor Server and MudBlazor on .NET 10, SQLite
    through EF Core, a container build, and CI.
-2. **Data model.** Hosts, the latest report per host, config versions,
-   queued actions, an audit trail.
-3. **The landing page against fixture data.** The host list can be built and
+2. **Password sign-in and users.** Done. Signing in through an OIDC provider
+   is the natural next sign-in method, when one is wanted.
+3. **Data model.** Hosts, the latest report per host, config versions,
+   queued actions, an audit trail (which can now record the user).
+4. **The landing page against fixture data.** The host list can be built and
    reviewed from hand-written reports shaped like `status --json`, before any
    host can check in.
-4. **The check-in endpoints.** The contract exists
+5. **The check-in endpoints.** The contract exists
    (`../rest-o-matic/contract/checkin/v1`), so this can start now, tested
    against a real host running `v0.2.0-rc.1`.
-5. **Config editing,** then **actions.**
+6. **Config editing,** then **actions.**
 
 The landing page's statuses (overdue, failed, needs attention) can be
 derived from check-ins: overdue from this app's own record of when each host
@@ -563,9 +584,10 @@ last checked in, failed and failing-since from the *status* part.
 ## Open questions
 
 - The layout of the host page and every screen after the landing page.
-- Login and user accounts. One constraint is settled: sign-in has to be
-  password-based, because the viewer key for file listings is unlocked by
-  the password (see [Browsing a snapshot](#browsing-a-snapshot)).
+- Which OIDC provider, if any, to add as a second sign-in method (a
+  provider on the tailnet such as Pocket ID or Authelia, or Tailscale
+  identity headers). Password sign-in stays as the fallback. Roles, if ever
+  needed, are also open; today every user can do everything.
 - How the recovery key is set up and tested from the UI. The design document
   describes the test; nothing is designed in detail.
 - How long a host may go without checking in before it counts as overdue.
@@ -589,6 +611,5 @@ last checked in, failed and failing-since from the *status* part.
 | Locked | Encrypted so that only chosen keys can read it |
 | Host key | A host's private key, which unlocks values locked for that host |
 | Recovery key | An offline key that can also unlock them, for when a host is lost |
-| Viewer key | A keypair this app holds for file listings. Hosts lock listings for its public half; the private half is unlocked by the user's password at sign-in |
 | Snapshot list | A host's record of the snapshots a job has in a repository, taken each time the job runs |
 | Overdue | A host that has stopped checking in, or a job that is past due and has not run |

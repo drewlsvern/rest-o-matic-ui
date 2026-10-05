@@ -1,0 +1,94 @@
+@implements IDisposable
+@inject IServiceScopeFactory Scopes
+@inject AccountEvents Events
+@inject IDialogService Dialogs
+
+@* The signed-in user, top right of the app bar. *@
+
+@if (_user is not null)
+{
+    <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" AriaLabel="Profile menu" Dense="true">
+        <ActivatorContent>
+            @* MudBlazor 9 leaves opening the menu to a custom activator. *@
+            <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="@(args => context.ToggleAsync(args))"
+                       Class="profile-menu-activator" aria-label="Profile menu" data-testid="profile-menu">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <UserAvatar User="_user" Size="Size.Small" Color="Color.Tertiary" />
+                    <MudText Typo="Typo.body2" Class="text-none" data-testid="profile-menu-name">@_user.ShownName</MudText>
+                </MudStack>
+            </MudButton>
+        </ActivatorContent>
+        <ChildContent>
+            <MudMenuItem Icon="@Icons.Material.Filled.Person" OnClick="OpenProfileAsync">Profile</MudMenuItem>
+            <MudMenuItem Icon="@Icons.Material.Filled.Group" Href="@UsersPage.Path">Users</MudMenuItem>
+            <MudDivider />
+            <form method="post" action="@SignInEndpoints.SignOutPath" class="profile-menu-sign-out">
+                <AntiforgeryToken />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.Logout" Class="justify-start text-none">Sign out</MudButton>
+            </form>
+        </ChildContent>
+    </MudMenu>
+}
+
+@code {
+    private UserSummary? _user;
+    private Guid? _userId;
+    private string? _sessionId;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthenticationState is null)
+        {
+            return;
+        }
+        var principal = (await AuthenticationState).User;
+        _userId = AccountClaims.UserId(principal);
+        _sessionId = AccountClaims.SessionId(principal);
+        await LoadAsync();
+    }
+
+    protected override void OnInitialized() => Events.ProfileChanged += OnProfileChanged;
+
+    private async Task LoadAsync()
+    {
+        if (_userId is not { } id)
+        {
+            _user = null;
+            return;
+        }
+        _user = await Scopes.WithAccountsAsync(accounts => accounts.FindAsync(id));
+    }
+
+    private async Task OpenProfileAsync()
+    {
+        if (_userId is not { } id)
+        {
+            return;
+        }
+        var parameters = new DialogParameters<ProfileDialog>
+        {
+            { d => d.UserId, id },
+            { d => d.SessionId, _sessionId },
+        };
+        await Dialogs.ShowAsync<ProfileDialog>("Profile", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true });
+    }
+
+    private void OnProfileChanged(Guid userId)
+    {
+        if (userId == _userId)
+        {
+            _ = InvokeAsync(async () =>
+            {
+                await LoadAsync();
+                StateHasChanged();
+            });
+        }
+    }
+
+    public void Dispose() => Events.ProfileChanged -= OnProfileChanged;
+}
