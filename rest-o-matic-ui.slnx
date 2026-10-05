@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RestOMatic.Web/RestOMatic.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RestOMatic.Web.Tests/RestOMatic.Web.Tests.csproj" />
+  </Folder>
+</Solution>

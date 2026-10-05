@@ -1,0 +1,23 @@
+@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Error</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Something went wrong</MudText>
+<MudText>An error occurred while processing your request.</MudText>
+
+@if (ShowRequestId)
+{
+    <MudText Class="mt-2">Request ID: <code>@RequestId</code></MudText>
+}
+
+@code{
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}
