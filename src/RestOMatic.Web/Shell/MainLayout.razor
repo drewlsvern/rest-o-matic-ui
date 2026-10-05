@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@using RestOMatic.Web.Features.Accounts.Profile
 
 <MudThemeProvider Theme="AppTheme.Default" />
 <MudPopoverProvider />
@@ -7,9 +8,13 @@
 
 <MudLayout>
     <MudAppBar Elevation="1" Dense="true">
-        <MudText Typo="Typo.h6">rest-o-matic</MudText>
+        <a href="/" class="app-bar-home">
+            <img src="images/rest-o-matic-mark.svg" alt="" class="app-bar-logo" />
+            <MudText Typo="Typo.h6">rest-o-matic</MudText>
+        </a>
         <MudSpacer />
-        <MudText Typo="Typo.caption">@AppVersion.Current</MudText>
+        <MudText Typo="Typo.caption" Class="mr-4">@AppVersion.Current</MudText>
+        <ProfileMenu />
     </MudAppBar>
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">

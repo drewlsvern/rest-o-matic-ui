@@ -1,0 +1,64 @@
+@page "/setup"
+@layout CentredLayout
+@attribute [AllowAnonymous]
+@inherits SignInPageBase
+@inject SetupHandler Handler
+
+<PageTitle>Set up · rest-o-matic</PageTitle>
+
+<Logo Class="sign-in-logo" />
+
+<MudPaper Elevation="2" Class="pa-6 mt-4">
+    <MudText Typo="Typo.h5" GutterBottom="true">Create the first user</MudText>
+    <MudText Typo="Typo.body2" Class="mb-4">
+        The setup token is in the app's log. It works once, and a new one is issued each time the app starts until setup is done.
+    </MudText>
+    @if (Context is not null)
+    {
+        <EditForm Model="_input" OnValidSubmit="CreateAsync" FormName="setup">
+            <DataAnnotationsValidator />
+            <MudStack Spacing="3">
+                <Problems Messages="_problems" />
+                <MudTextField @bind-Value="_input.Token" For="@(() => _input.Token)" Immediate="true"
+                              Label="Setup token" Variant="Variant.Outlined" AutoFocus="true" />
+                <UserFields Input="_input" />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                           FullWidth="true" Disabled="@(_busy || !RendererInfo.IsInteractive)">Create user and sign in</MudButton>
+            </MudStack>
+        </EditForm>
+    }
+</MudPaper>
+
+@code {
+    public const string Path = "/setup";
+
+    private readonly SetupForm _input = new();
+    private IReadOnlyList<string> _problems = [];
+    private bool _busy;
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        try
+        {
+            var (result, completionUrl) = await Handler.CreateFirstUserAsync(
+                new SetupInput(_input.Token, _input.ToNewUser()), Context!.BrowserBinding);
+            _problems = result.Problems;
+            if (completionUrl is not null)
+            {
+                Navigation.NavigateTo(completionUrl, forceLoad: true);
+            }
+        }
+        finally
+        {
+            _input.ClearPasswords();
+            _busy = false;
+        }
+    }
+
+    private sealed class SetupForm : NewUserForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Enter the setup token from the log.")]
+        public string Token { get; set; } = "";
+    }
+}

@@ -14,11 +14,10 @@ public static class HealthFeature
 
     /// <summary>
     /// 200 when the app is running and its database can be opened, 503 when
-    /// the database cannot. Mapped as a plain endpoint, outside the Blazor
-    /// components, so it can be left open when login is added.
+    /// the database cannot. Open to everyone, so the deployment can probe it.
     /// </summary>
     public static void MapHealth(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapHealthChecks(Path);
+        endpoints.MapHealthChecks(Path).AllowAnonymous();
     }
 }

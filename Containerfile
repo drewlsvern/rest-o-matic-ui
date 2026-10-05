@@ -11,9 +11,13 @@ COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/RestOMatic.Web/RestOMatic.Web.csproj src/RestOMatic.Web/
 RUN dotnet restore src/RestOMatic.Web/RestOMatic.Web.csproj -a $TARGETARCH
 
+# Publish restores again, now that it can see the source. The SDK adds the
+# package holding Blazor's own script (_framework/blazor.web.js) only for a
+# project with Razor components, which the restore above cannot see.
+# Without it the image serves no script and no page is interactive.
 COPY src/ src/
 RUN dotnet publish src/RestOMatic.Web/RestOMatic.Web.csproj \
-        -a $TARGETARCH -c Release --no-restore \
+        -a $TARGETARCH -c Release \
         -p:Version=$VERSION \
         -o /app \
     && mkdir /empty-data

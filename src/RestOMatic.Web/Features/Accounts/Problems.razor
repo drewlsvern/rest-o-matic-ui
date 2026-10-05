@@ -1,0 +1,16 @@
+@* Every reason an account change was refused, in one alert. Renders nothing when there are none. *@
+
+@if (Messages.Count > 0)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" data-testid="problems">
+        @foreach (var message in Messages)
+        {
+            <div>@message</div>
+        }
+    </MudAlert>
+}
+
+@code {
+    [Parameter]
+    public IReadOnlyList<string> Messages { get; set; } = [];
+}

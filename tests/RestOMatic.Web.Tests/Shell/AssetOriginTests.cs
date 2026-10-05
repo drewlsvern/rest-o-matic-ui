@@ -4,13 +4,18 @@ namespace RestOMatic.Web.Tests.Shell;
 
 public partial class AssetOriginTests
 {
-    [Fact]
-    public async Task Home_page_references_nothing_on_another_origin()
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/account/sign-in")]
+    [InlineData("/setup")]
+    public async Task Page_references_nothing_on_another_origin(string page)
     {
         using var factory = new AppFactory();
-        using var client = factory.CreateDirectClient();
+        using var client = page == "/"
+            ? await factory.CreateSignedInClientAsync(await factory.CreateUserAsync("alice"))
+            : factory.CreateDirectClient();
 
-        var html = await client.GetStringAsync("/");
+        var html = await client.GetStringAsync(page);
 
         var references = ReferenceAttribute().Matches(html).Select(m => m.Groups[1].Value).ToList();
         Assert.NotEmpty(references);
@@ -22,7 +27,7 @@ public partial class AssetOriginTests
     public async Task Stylesheets_import_nothing_from_another_origin()
     {
         using var factory = new AppFactory();
-        using var client = factory.CreateDirectClient();
+        using var client = await factory.CreateSignedInClientAsync(await factory.CreateUserAsync("alice"));
         var html = await client.GetStringAsync("/");
         var stylesheets = StylesheetLink().Matches(html).Select(m => m.Groups[1].Value).ToList();
         Assert.NotEmpty(stylesheets);

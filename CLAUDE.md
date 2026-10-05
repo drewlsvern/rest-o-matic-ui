@@ -24,11 +24,16 @@ Before proposing or building anything, read:
 - Secrets are write-only. A secret is locked in the browser by JavaScript
   and must never be bound to a Blazor input, which would send it to the
   server in plain text.
-- Sign-in is password-based. The password also unlocks the "viewer" key
-  that file listings are stored under, so signing in is what makes them
-  readable. See "Browsing a snapshot" in `docs/handoff.md`.
+- File listings are stored unencrypted. Encrypting them for a "viewer"
+  key was dropped on 2026-10-05 and is deferred, so nothing constrains how
+  users sign in. See "Browsing a snapshot" in `docs/handoff.md`.
 - A snapshot's contents are browsed from one full listing, uploaded by the
   host on request and cached here, not fetched a folder at a time.
+- Users sign in with a password; OIDC may be added later as a second method.
+  Sessions live on the server. Every page and endpoint needs a signed-in
+  user unless it opts out with `AllowAnonymous`, so a new endpoint is closed
+  by default. Host endpoints will need their own bearer scheme, not the
+  cookie.
 
 ## Code layout: vertical slices
 

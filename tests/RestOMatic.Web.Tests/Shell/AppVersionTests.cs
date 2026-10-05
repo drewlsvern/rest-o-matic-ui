@@ -8,7 +8,7 @@ public class AppVersionTests
     public async Task Page_shows_the_development_version_when_the_build_was_given_none()
     {
         using var factory = new AppFactory();
-        using var client = factory.CreateDirectClient();
+        using var client = await factory.CreateSignedInClientAsync(await factory.CreateUserAsync("alice"));
 
         var html = await client.GetStringAsync("/");
 

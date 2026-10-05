@@ -1,0 +1,36 @@
+@page "/account/sign-in"
+@layout CentredLayout
+@attribute [AllowAnonymous]
+@inherits SignInPageBase
+@inject IEnumerable<SignInMethod> Methods
+@inject AuthenticationStateProvider Authentication
+
+<PageTitle>Sign in · rest-o-matic</PageTitle>
+
+<Logo Class="sign-in-logo" />
+
+<MudPaper Elevation="2" Class="pa-6 mt-4">
+    <MudText Typo="Typo.h5" GutterBottom="true">Sign in</MudText>
+    @if (Context is not null)
+    {
+        <MudStack Spacing="4">
+            @foreach (var method in Methods.OrderBy(m => m.Order))
+            {
+                <DynamicComponent Type="method.Component" Parameters="@(new Dictionary<string, object?> { ["Context"] = Context })" />
+            }
+        </MudStack>
+    }
+</MudPaper>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        // Someone already signed in, who arrived here from a link on another
+        // site (which does not carry the SameSite=Strict cookie), goes on.
+        var state = await Authentication.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated == true)
+        {
+            Navigation.NavigateTo(ReturnUrls.Local(ReturnUrl), forceLoad: true);
+        }
+    }
+}

@@ -1,0 +1,12 @@
+@inject NavigationManager Navigation
+
+@* Shown in place of a page that needs a signed-in user, when there is none:
+   on first load without a session, or when an open page's session ends. *@
+
+@code {
+    protected override void OnInitialized()
+    {
+        var here = "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+        Navigation.NavigateTo($"/account/sign-in?returnUrl={Uri.EscapeDataString(here)}", forceLoad: true);
+    }
+}

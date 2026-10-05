@@ -1,0 +1,192 @@
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Components.Forms
+@inject IServiceScopeFactory Scopes
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        @if (_user is null)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else
+        {
+            <MudTabs Elevation="0" ApplyEffectsToContainer="true" TabPanelsClass="pt-4">
+                <MudTabPanel Text="Profile">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mb-4">
+                        <UserAvatar User="_user" Size="Size.Large" />
+                        <MudStack Spacing="1">
+                            <MudFileUpload @ref="_upload" T="IBrowserFile" Accept="@ProfilePictures.Accept" FilesChanged="UploadPictureAsync">
+                                <CustomContent>
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Upload"
+                                               OnClick="@context.OpenFilePickerAsync">Upload picture</MudButton>
+                                </CustomContent>
+                            </MudFileUpload>
+                            @if (_user.HasPicture)
+                            {
+                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Error"
+                                           StartIcon="@Icons.Material.Filled.Delete" OnClick="RemovePictureAsync">Remove picture</MudButton>
+                            }
+                            <MudText Typo="Typo.caption">@ProfilePictures.AllowedFormats, up to 1 MB.</MudText>
+                        </MudStack>
+                    </MudStack>
+                    <Problems Messages="_pictureProblems" />
+
+                    <EditForm Model="_profile" OnValidSubmit="SaveProfileAsync" FormName="profile">
+                        <DataAnnotationsValidator />
+                        <MudStack Spacing="3">
+                            <Problems Messages="_profileProblems" />
+                            <MudTextField Value="_user.UserName" Label="User name" Variant="Variant.Outlined" ReadOnly="true" Disabled="true" />
+                            <MudTextField @bind-Value="_profile.DisplayName" For="@(() => _profile.DisplayName)" Immediate="true"
+                                          Label="Display name (optional)" Variant="Variant.Outlined" MaxLength="AccountRules.DisplayNameMaxLength" />
+                            <MudTextField @bind-Value="_profile.Email" For="@(() => _profile.Email)" Immediate="true"
+                                          Label="Email" Variant="Variant.Outlined" InputType="InputType.Email" />
+                            <MudStack Row="true" Justify="Justify.FlexEnd">
+                                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
+                            </MudStack>
+                        </MudStack>
+                    </EditForm>
+                </MudTabPanel>
+
+                <MudTabPanel Text="Password">
+                    <EditForm Model="_password" OnValidSubmit="ChangePasswordAsync" FormName="change-password">
+                        <DataAnnotationsValidator />
+                        <MudStack Spacing="3">
+                            <Problems Messages="_passwordProblems" />
+                            <MudTextField @bind-Value="_password.Current" For="@(() => _password.Current)" Immediate="true"
+                                          Label="Current password" Variant="Variant.Outlined" InputType="InputType.Password" />
+                            <NewPasswordFields Label="New password"
+                                               @bind-Password="_password.Password" @bind-Confirmation="_password.Confirmation"
+                                               PasswordFor="@(() => _password.Password)" ConfirmationFor="@(() => _password.Confirmation)" />
+                            <MudText Typo="Typo.caption">Your other sessions will be signed out. This one stays signed in.</MudText>
+                            <MudStack Row="true" Justify="Justify.FlexEnd">
+                                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Change password</MudButton>
+                            </MudStack>
+                        </MudStack>
+                    </EditForm>
+                </MudTabPanel>
+            </MudTabs>
+        }
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private UserSummary? _user;
+    private MudFileUpload<IBrowserFile>? _upload;
+    private ProfileForm _profile = new();
+    private PasswordChange _password = new("");
+    private IReadOnlyList<string> _profileProblems = [];
+    private IReadOnlyList<string> _passwordProblems = [];
+    private IReadOnlyList<string> _pictureProblems = [];
+    private bool _busy;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter]
+    public Guid UserId { get; set; }
+
+    /// <summary>The session the dialog was opened from, which stays signed in after a password change.</summary>
+    [Parameter]
+    public string? SessionId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        if (_user is not null)
+        {
+            _profile = new ProfileForm { DisplayName = _user.DisplayName, Email = _user.Email };
+            _password = new PasswordChange(_user.UserName);
+        }
+    }
+
+    private async Task ReloadAsync() => _user = await Scopes.WithAccountsAsync(accounts => accounts.FindAsync(UserId));
+
+    private async Task SaveProfileAsync()
+    {
+        _busy = true;
+        var result = await Scopes.WithAccountsAsync(accounts =>
+            accounts.UpdateProfileAsync(UserId, _profile.DisplayName, _profile.Email));
+        _profileProblems = result.Problems;
+        _busy = false;
+        if (result.Succeeded)
+        {
+            Snackbar.Add("Profile saved.", Severity.Success);
+            Dialog.Close();
+        }
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        _busy = true;
+        try
+        {
+            var result = await Scopes.WithAccountsAsync(accounts => accounts.ChangeOwnPasswordAsync(
+                UserId, _password.Current, _password.Password, _password.Confirmation, SessionId));
+            _passwordProblems = result.Problems;
+            if (result.Succeeded)
+            {
+                Snackbar.Add("Password changed.", Severity.Success);
+                Dialog.Close();
+            }
+        }
+        finally
+        {
+            _password.Clear();
+            _busy = false;
+        }
+    }
+
+    private async Task UploadPictureAsync(IBrowserFile? file)
+    {
+        if (file is null)
+        {
+            return;
+        }
+        if (file.Size > ProfilePictures.MaxBytes)
+        {
+            _pictureProblems = [ProfilePictures.TooLarge];
+        }
+        else
+        {
+            // One byte over the limit is allowed through, so ProfilePictures sees and refuses it.
+            await using var stream = file.OpenReadStream(ProfilePictures.MaxBytes + 1);
+            var result = await Scopes.WithAccountsAsync(accounts => accounts.SetPictureAsync(UserId, stream));
+            _pictureProblems = result.Problems;
+            await ReloadAsync();
+        }
+
+        // The new picture is shown in the avatar; the file's name is not needed.
+        if (_upload is not null)
+        {
+            await _upload.ClearAsync();
+        }
+    }
+
+    private async Task RemovePictureAsync()
+    {
+        var result = await Scopes.WithAccountsAsync(accounts => accounts.RemovePictureAsync(UserId));
+        _pictureProblems = result.Problems;
+        await ReloadAsync();
+    }
+
+    private sealed class PasswordChange(string userName) : IValidatableObject
+    {
+        [Required(ErrorMessage = "Enter your current password.")]
+        public string Current { get; set; } = "";
+
+        public string Password { get; set; } = "";
+
+        public string Confirmation { get; set; } = "";
+
+        public void Clear()
+        {
+            Current = "";
+            Password = "";
+            Confirmation = "";
+        }
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
+            new NewPasswordForm(userName) { Password = Password, Confirmation = Confirmation }.Validate(validationContext);
+    }
+}

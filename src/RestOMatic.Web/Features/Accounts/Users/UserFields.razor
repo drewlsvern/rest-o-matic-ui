@@ -1,0 +1,18 @@
+@* The fields of a new user. Used inside an EditForm whose model is the same NewUserForm. *@
+
+<MudTextField @bind-Value="Input.UserName" For="@(() => Input.UserName)" Immediate="true"
+              Label="User name" Variant="Variant.Outlined" MaxLength="AccountRules.UserNameMaxLength"
+              HelperText="@UserNameHelp" />
+<MudTextField @bind-Value="Input.Email" For="@(() => Input.Email)" Immediate="true"
+              Label="Email" Variant="Variant.Outlined" InputType="InputType.Email" />
+<MudTextField @bind-Value="Input.DisplayName" For="@(() => Input.DisplayName)" Immediate="true"
+              Label="Display name (optional)" Variant="Variant.Outlined" MaxLength="AccountRules.DisplayNameMaxLength" />
+<NewPasswordFields @bind-Password="Input.Password" @bind-Confirmation="Input.Confirmation"
+                   PasswordFor="@(() => Input.Password)" ConfirmationFor="@(() => Input.Confirmation)" />
+
+@code {
+    private const string UserNameHelp = "Letters, digits, '.', '_', '-' and '@'. It cannot be changed later.";
+
+    [Parameter, EditorRequired]
+    public NewUserForm Input { get; set; } = default!;
+}
