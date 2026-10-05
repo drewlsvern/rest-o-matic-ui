@@ -59,7 +59,7 @@ jobs:
           fi
 
       - name: Set up QEMU
-        # Only for the runtime stage of the arm64 image. The Dockerfile's
+        # Only for the runtime stage of the arm64 image. The Containerfile's
         # build stage must run on the build platform and cross-compile (see
         # docs/handoff.md); building .NET under emulation is slow and
         # unreliable.
@@ -88,6 +88,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          # Buildx looks for a Dockerfile unless told otherwise.
+          file: Containerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

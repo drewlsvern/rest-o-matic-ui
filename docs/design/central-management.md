@@ -1,4 +1,4 @@
-> **Copied from the `rest-o-matic` repository on 2026-10-02** (`docs/design/central-management.md`).
+> **Copied from the `rest-o-matic` repository on 2026-10-05** (`docs/design/central-management.md`, as of pull request #29).
 > That repository holds the original; if the two differ, the original wins.
 > Where this document says "this repository", it means `rest-o-matic`, the host CLI.
 > For what it means for the central app, start with [../handoff.md](../handoff.md).
@@ -110,8 +110,15 @@ Rules:
 
 ## Report
 
-A report is a full picture of the host's current state, not a stream of
-events. If the central app misses reports, the next one brings it fully up
+Every check-in is a heartbeat: the host's identity, versions, and a
+fingerprint of each part of its state (status, snapshot lists, config). A
+part is sent in full only when its fingerprint has changed since the central
+app last acknowledged it, or when the central app asks for it again. A quiet
+minute costs a few hundred bytes. The exact messages are in the
+`enrolment-and-checkin` change and, once built, in `contract/checkin/v1/`.
+
+Taken together, the parts are a full picture of the host's current state,
+not a stream of events. If the central app misses reports, the next one brings it fully up
 to date and nothing needs to be queued or replayed.
 
 Contents:
@@ -241,6 +248,85 @@ next check-in.
 Initialising is always an explicit action. Doing it automatically would turn
 a mistyped URL into a new empty repository that backups then succeed into.
 
+### Results are uploaded separately
+
+An action's result is uploaded by the host as soon as the action finishes,
+in a request of its own, not carried in the next check-in. Results can be
+large (a file listing runs to megabytes), and waiting for the next check-in
+would double how long the UI waits.
+
+## Browsing a snapshot
+
+Listing what is inside a snapshot needs the repository and its password, so
+it runs on the host. Asking the host for one folder at a time would cost a
+check-in per click. Instead, the whole listing is loaded once:
+
+1. The UI queues a "list files" action for a snapshot.
+2. At its next check-in the host runs `restic ls` on that snapshot and
+   uploads the complete listing, compressed.
+3. The central app stores it against the snapshot's ID.
+4. Browsing folders, searching by name and sorting by size are then
+   immediate, for as long as the snapshot exists.
+
+A snapshot never changes once written, so a listing never goes stale and
+never needs loading twice. The first view of a snapshot waits about a
+minute.
+
+- **Size.** No limit is expected to matter for the fleets this is built
+  for. A high default limit protects the central app, and can be raised.
+- **File names are stored encrypted.** See
+  [The viewer key](#the-viewer-key) below. Source paths, snapshot paths
+  and error messages are reported in plain text regardless.
+- **What changed, without a listing.** Each snapshot in the regular report
+  already says how many files were new or changed and how much data it
+  added, which often answers the question that prompts a drill-down.
+
+### The viewer key
+
+A listing holds the name of every file in a snapshot, so the central app
+stores listings encrypted and can only read them while someone is signed
+in.
+
+```
+Setup:    the central app creates a viewer keypair
+          public half  → stored as is; hosts lock listings for it
+          private half → stored encrypted with a key derived from the
+                         user's password
+
+Sign-in:  the password unlocks the private half, in memory, for that session
+Browsing: the server unlocks a listing, then serves browsing and search
+Sign-out: the unlocked key is discarded
+```
+
+| Situation | File names readable? |
+|---|---|
+| The database or a backup of it is copied | No |
+| The server's disk is taken while nobody is signed in | No |
+| Someone controls the running server while a user is signed in | Yes |
+
+- **Nothing extra to type.** Signing in is the unlock.
+- **Hosts are unaffected by who is signed in.** They lock a listing for the
+  public half, which the central app hands them, and can upload at any
+  time.
+- **It requires password sign-in,** since the unlocking key is derived from
+  the password. Changing the password re-wraps the private half.
+- **Losing the viewer key loses nothing permanent.** Listings are a cache of
+  what is in the repository. With a forgotten password the app creates a
+  new viewer key and hosts list snapshots again on demand. No backup of
+  this key and no recovery drill are needed, unlike the recovery key for
+  secrets.
+- **Each user has their own wrapped copy** of the private half, made by a
+  signed-in user when the account is created.
+- **It is not the same key as the recovery key,** and must not be. The
+  recovery key opens repository passwords and stays offline; the viewer key
+  opens file names only and lives, wrapped, in the central app.
+
+Unlocking in the browser instead (with a passkey, or a key remembered per
+browser) would mean the server never sees file names at all. It was set
+aside as much more to build for little practical gain, and stays possible
+later: hosts only ever lock for a public key, so they would not notice the
+change.
+
 ## Secrets
 
 Config contains repository passwords and storage credentials. They are
@@ -300,6 +386,8 @@ repositories:
 - **Enrolling a host with an existing config rewrites its secrets in
   place**, locking the plain-text values before the file is uploaded. That
   edit must leave comments and YAML anchors intact.
+- **The config is uploaded only when every secret in it is locked.** Until
+  then the check-in withholds it and says which fields are in plain text.
 - **Two helper commands** work on the host with the central app down: one
   locks a value to paste into the config, and one reveals a locked value
   using the host's own key, for running plain restic by hand.
@@ -405,8 +493,9 @@ pipeline uses, and puts two runtimes in one process. Reimplementing the
 rules in C# would drift from the host's.
 
 This needs two small additions to the CLI: JSON output for `validate`, and
-a JSON Schema for the config file generated from the Go types, which gives
-the editor autocomplete and structural checks in the browser.
+a JSON Schema for the config file, built into each release and checked
+against the Go types by tests, which gives the editor autocomplete and
+structural checks in the browser.
 
 ### Consequences of Blazor Server
 
@@ -526,12 +615,14 @@ the central app's repository.
 - **Live agent.** An optional long-running process holding an outbound
   connection, so actions run immediately. It would only speed up delivery;
   cron and `tick` would keep doing the scheduling.
-- **Browsing files inside a snapshot.** Each folder opened is a round trip
-  to the host, which is slow at one check-in per minute.
-- **Restore from the UI.** Restoring to a scratch directory fits the action
-  queue. Moving files into place needs the container stopped, which ties
-  into the planned Quadlet source type. Until then the UI can show the
-  exact restore commands for a chosen snapshot.
+- **Browsing files inside a snapshot.** See
+  [Browsing a snapshot](#browsing-a-snapshot) for the agreed approach. It
+  waits for the action queue.
+- **Restore from the UI.** The natural next step after browsing: pick a
+  file or folder and queue a restore to a scratch directory on the host.
+  Moving files into place needs the container stopped, which ties into the
+  planned Quadlet source type. Until then the UI can show the exact restore
+  commands for a chosen snapshot.
 - **Restore drill.** A periodic check that a recovered password can list
   and restore from a real repository.
 - **Filtering queued commands.** Limiting what `exec` commands the UI may
@@ -539,6 +630,11 @@ the central app's repository.
 - **Signed config.** Hosts applying only config signed by a key that is not
   on the central app, which would remove the central app from the trusted
   set.
+- **Enrolment started from the host.** Running `enrol` on a host first and
+  approving it in the UI. Enrolment starts in the UI for now, so the
+  enrolment endpoint never accepts anything from an unidentified machine.
+- **Locked values in hook commands.** A token inside a hook (a healthcheck
+  URL, say) is uploaded in plain text with the config.
 
 ## Decision log
 
@@ -572,6 +668,20 @@ the central app's repository.
 - The host's private key lives in the user's config directory, not the state
   directory.
 - A restore drill is a separate, later feature.
+- Snapshot contents are browsed by loading a snapshot's whole listing once
+  and caching it centrally; restoring from that view is the follow-on.
+- File listings are stored encrypted for a viewer key, whose private half
+  is unlocked on the server by the user's password at sign-in.
+- Enrolment starts in the UI with a one-time token, which may be pasted as
+  part of a command.
+- Every check-in is a heartbeat; status, snapshot lists and config are sent
+  only when changed or asked for.
+- The config is uploaded from this step on, but only while all its secrets
+  are locked. A short fixed list of harmless `env` settings (region,
+  restic's tuning) may stay plain; any other name counts as a secret.
+- Secrets stay write-only: the central app can replace a locked value but
+  never read it. Confirmed again on 2026-10-03.
+- When a host counts as overdue is decided on the central app's side.
 - The work is split into separate changes, written one at a time.
 
 ### Accepted as proposed
@@ -593,5 +703,7 @@ the change that implements each one is written.
 
 ### Open
 
+- How users sign in to the central app. File listings need it to be
+  password-based (see [The viewer key](#the-viewer-key)).
 - The layout of the host page and the remaining screens.
-- Login and user accounts for the central app.
+- User accounts for the central app: how many, and who may do what.

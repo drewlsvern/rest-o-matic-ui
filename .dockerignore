@@ -1,0 +1,21 @@
+# Named .dockerignore, not .containerignore: Podman reads either, but Buildx
+# (used by CI and the release) reads only this name.
+
+# Build output
+**/bin/
+**/obj/
+
+# Local data directory
+data/
+src/RestOMatic.Web/data/
+
+# Not needed to build the image
+.git/
+.github/
+.claude/
+docs/
+openspec/
+tests/
+*.md
+Containerfile
+.dockerignore
