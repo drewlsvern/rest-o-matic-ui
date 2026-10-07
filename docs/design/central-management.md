@@ -1,4 +1,4 @@
-> **Copied from the `rest-o-matic` repository on 2026-10-05** (`docs/design/central-management.md`, as of commit `730e688`).
+> **Copied from the `rest-o-matic` repository on 2026-10-05** (`docs/design/central-management.md`, as of pull request #30).
 > That repository holds the original; if the two differ, the original wins.
 > Where this document says "this repository", it means `rest-o-matic`, the host CLI.
 > For what it means for the central app, start with [../handoff.md](../handoff.md).

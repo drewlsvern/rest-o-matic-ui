@@ -1,0 +1,75 @@
+@inject IServiceScopeFactory Scopes
+
+@* Takes a name, then shows the enrol command. Also used to show a new command for an existing host. *@
+
+<MudDialog>
+    <DialogContent>
+        @if (_token is null)
+        {
+            <EditForm id="add-host" Model="this" OnSubmit="AddAsync" FormName="add-host">
+                <MudStack Spacing="3">
+                    @if (_problems.Count > 0)
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true" data-testid="problems">
+                            @foreach (var problem in _problems)
+                            {
+                                <div>@problem</div>
+                            }
+                        </MudAlert>
+                    }
+                    <MudTextField @bind-Value="_name" Immediate="true" Label="Name" Variant="Variant.Outlined" AutoFocus="true"
+                                  MaxLength="HostNames.MaxLength"
+                                  HelperText="How the host is shown here. Letters, digits, '.', '_' and '-'." />
+                </MudStack>
+            </EditForm>
+        }
+        else
+        {
+            <EnrolCommand HostName="@_name" Token="_token" />
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_token is null)
+        {
+            <MudButton OnClick="() => Dialog.Cancel()">Cancel</MudButton>
+            <MudButton ButtonType="ButtonType.Submit" form="add-host" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Add host</MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => Dialog.Close(DialogResult.Ok(true))">Done</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _name = "";
+    private IssuedToken? _token;
+    private IReadOnlyList<string> _problems = [];
+    private bool _busy;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    /// <summary>Set to show a new command for this existing host instead of adding one.</summary>
+    [Parameter]
+    public HostSummary? Existing { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Existing is not null)
+        {
+            _name = Existing.Name;
+            _token = await Scopes.WithHostsAsync(hosts => hosts.NewTokenAsync(Existing.Id));
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        _busy = true;
+        var (problems, _, token) = await Scopes.WithHostsAsync(hosts => hosts.AddAsync(_name));
+        _problems = problems;
+        _token = token;
+        _name = _name.Trim();
+        _busy = false;
+    }
+}

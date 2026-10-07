@@ -1,5 +1,6 @@
 using RestOMatic.Web.Features.Accounts;
 using RestOMatic.Web.Features.Health;
+using RestOMatic.Web.Features.Hosts;
 using RestOMatic.Web.Infrastructure.Hosting;
 using RestOMatic.Web.Infrastructure.Persistence;
 using RestOMatic.Web.Infrastructure.Storage;
@@ -15,6 +16,7 @@ builder.AddPersistence();
 builder.AddShell();
 builder.AddHealth();
 builder.AddAccounts();
+builder.AddHosts();
 
 var app = builder.Build();
 
@@ -29,10 +31,12 @@ if (await app.RunAccountsCommandAsync(args))
 
 app.UseReverseProxy();
 app.UseShell();
+app.UseHosts();
 app.UseAccounts();
 app.MapShell();
 
 app.MapHealth();
 app.MapAccounts();
+app.MapHosts();
 
 app.Run();

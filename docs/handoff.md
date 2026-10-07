@@ -44,9 +44,30 @@ a profile picture. The app trusts forwarded headers only from configured
 proxy addresses (Caddy for now). The design of that change, in
 `openspec/changes/`, explains how OIDC fits in later: every sign-in method
 ends in `AccountSessions.SignInAsync`, and external logins get a table of
-their own beside the password one. **The check-in endpoints must not use the
-cookie:** they need their own bearer scheme, and the fallback policy means
-they must declare which.
+their own beside the password one.
+
+**Hosts enrol and check in, 2026-10-05** (the `host-check-in` change). A
+signed-in user adds a host on the Hosts page and gets a one-time
+`rest-o-matic enrol` command. `POST /api/v1/enrol` and
+`POST /api/v1/checkin` follow `contract/checkin/v1` and are tested against
+it. They are authenticated by the enrol token and by a host credential (its
+own `HostCredential` bearer scheme, never the sign-in cookie). This has been
+checked against a real host built from `v0.2.0-rc.1`. What a landing page
+can use:
+
+- `Hosts`: name, hostname, OS, architecture, rest-o-matic and restic
+  versions, `LastCheckInAt` (the app's own clock, for "overdue") and
+  `JobCount`.
+- `HostParts`: the latest `status`, `snapshots` and `config` of each host,
+  as the raw JSON (or config text) the host sent, with its fingerprint and
+  `sent_at`. A withheld config keeps its last text with `IsCurrent = false`
+  and the reason and fields. There is no history.
+
+The contract is **copied** into `contract/checkin/v1/` (see
+`contract/PROVENANCE.md`) so CI can test against it. **Run
+`scripts/sync-contract.sh` whenever the host changes the contract.** TODO:
+pin the copy to a host release and add a weekly CI job that reports drift
+(see the `host-check-in` design, archived under `openspec/changes/archive/`).
 
 ## What this repository is
 
@@ -567,15 +588,15 @@ Nothing here is decided; it is a suggestion.
    through EF Core, a container build, and CI.
 2. **Password sign-in and users.** Done. Signing in through an OIDC provider
    is the natural next sign-in method, when one is wanted.
-3. **Data model.** Hosts, the latest report per host, config versions,
-   queued actions, an audit trail (which can now record the user).
-4. **The landing page against fixture data.** The host list can be built and
-   reviewed from hand-written reports shaped like `status --json`, before any
-   host can check in.
-5. **The check-in endpoints.** The contract exists
-   (`../rest-o-matic/contract/checkin/v1`), so this can start now, tested
-   against a real host running `v0.2.0-rc.1`.
-6. **Config editing,** then **actions.**
+3. **Enrolment and check-in.** Done (it came before the data model and the
+   landing page, as a vertical slice). Hosts and the latest report of each
+   are stored; the rest of the data model arrives with the features that
+   need it.
+4. **The landing page.** The host list with statuses (overdue, failed, needs
+   attention), built on what check-ins now store. It can be tried with real
+   hosts as well as with reports shaped like `status --json`.
+5. **Config editing** (with config versions and an audit trail that records
+   the user), then **actions.**
 
 The landing page's statuses (overdue, failed, needs attention) can be
 derived from check-ins: overdue from this app's own record of when each host

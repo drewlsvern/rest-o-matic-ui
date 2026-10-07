@@ -1,0 +1,149 @@
+@page "/hosts"
+@inject IServiceScopeFactory Scopes
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject TimeProvider Time
+
+<PageTitle>Hosts · rest-o-matic</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h5">Hosts</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAsync">Add host</MudButton>
+</MudStack>
+
+@* Every column sorts except the actions. A PropertyColumn sorts by default, but a
+   TemplateColumn defaults to Sortable="false", so each one here opts in. Sorted by
+   hostname at first; a host that has not enrolled has none yet and comes after the rest. *@
+<MudDataGrid T="HostSummary" Items="_hosts" Hover="true" Dense="true" Loading="_hosts is null" Breakpoint="Breakpoint.Sm" Class="hosts-grid">
+    <Columns>
+        <PropertyColumn Property="h => h.Name" Title="Name" />
+        <TemplateColumn T="HostSummary" Sortable="true" Title="Hostname" SortBy="NullsLast(h => h.Hostname)" InitialDirection="SortDirection.Ascending">
+            <CellTemplate>@(context.Item.Hostname ?? Missing)</CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="HostSummary" Sortable="true" Title="Last check-in" SortBy="NullsLast(h => h.LastCheckInAt)">
+            <CellTemplate>
+                @{ var host = context.Item; }
+                @if (!host.IsEnrolled)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">Waiting to enrol</MudChip>
+                    <span data-testid="token-expiry">@TokenState(host)</span>
+                }
+                else if (host.LastCheckInAt is { } at)
+                {
+                    <MudTooltip Text="@EnrolCommand.Utc(at)"><span data-testid="last-check-in">@Ago(at)</span></MudTooltip>
+                }
+                else
+                {
+                    <span>Enrolled, not checked in yet</span>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="HostSummary" Sortable="true" Title="rest-o-matic" SortBy="NullsLast(h => h.RestOMaticVersion)">
+            <CellTemplate>@(context.Item.RestOMaticVersion ?? Missing)</CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="HostSummary" Sortable="true" Title="restic" SortBy="NullsLast(h => h.ResticVersion)">
+            <CellTemplate>@(context.Item.ResticVersion ?? Missing)</CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="HostSummary" Sortable="true" Title="Jobs" SortBy="NullsLast(h => h.JobCount)">
+            <CellTemplate>@(context.Item.JobCount?.ToString() ?? Missing)</CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="HostSummary" Sortable="false" CellStyle="text-align: right; white-space: nowrap">
+            <CellTemplate>
+                <MudTooltip Text="New enrol command">
+                    <MudIconButton Icon="@Icons.Material.Filled.Terminal" Size="Size.Small" aria-label="@($"New enrol command for {context.Item.Name}")"
+                                   OnClick="() => NewCommandAsync(context.Item)" />
+                </MudTooltip>
+                <MudTooltip Text="Remove">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   aria-label="@($"Remove {context.Item.Name}")" OnClick="() => RemoveAsync(context.Item)" />
+                </MudTooltip>
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <NoRecordsContent>
+        <MudText>No hosts yet. Add one, then run the command it gives you on that host.</MudText>
+    </NoRecordsContent>
+</MudDataGrid>
+
+@code {
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+
+    private const string Missing = "—";
+
+    private List<HostSummary>? _hosts;
+
+    /// <summary>
+    /// Sorts by a value that a waiting host does not have yet, keeping those
+    /// hosts after the others when sorted ascending instead of before them.
+    /// </summary>
+    private static Func<HostSummary, object> NullsLast<TValue>(Func<HostSummary, TValue?> value) =>
+        host => value(host) is { } v ? (0, v) : (1, default(TValue));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    // Handed over already in the grid's initial order: the grid applies its
+    // initial sort only once the page is interactive, so the first paint would
+    // otherwise show a different order and then jump.
+    private async Task LoadAsync() =>
+        _hosts = (await Scopes.WithHostsAsync(hosts => hosts.ListAsync()))
+            .OrderBy(NullsLast(h => h.Hostname))
+            .ToList();
+
+    private async Task AddAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<AddHostDialog>("Add host", Options);
+        await dialog.Result;
+        await LoadAsync();
+    }
+
+    private async Task NewCommandAsync(HostSummary host)
+    {
+        if (host.IsEnrolled)
+        {
+            var confirmed = await Dialogs.ShowMessageBoxAsync(
+                "New enrol command",
+                $"{host.Name} is enrolled. When it enrols again with the new command, its current credential stops working. What it reported is kept.",
+                yesText: "Issue command", cancelText: "Cancel");
+            if (confirmed != true)
+            {
+                return;
+            }
+        }
+        var parameters = new DialogParameters<AddHostDialog> { { d => d.Existing, host } };
+        var dialog = await Dialogs.ShowAsync<AddHostDialog>($"Enrol {host.Name}", parameters, Options);
+        await dialog.Result;
+        await LoadAsync();
+    }
+
+    private async Task RemoveAsync(HostSummary host)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            "Remove host",
+            $"Remove {host.Name}? What it reported is deleted, and it can no longer check in until it is added and enrolled again.",
+            yesText: "Remove", cancelText: "Cancel");
+        if (confirmed != true)
+        {
+            return;
+        }
+        await Scopes.WithHostsAsync(hosts => hosts.RemoveAsync(host.Id));
+        Snackbar.Add($"{host.Name} removed.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private string TokenState(HostSummary host) =>
+        host.EnrolTokenExpiresAt is { } expires && expires > Time.GetUtcNow()
+            ? $"command valid until {EnrolCommand.Utc(expires)}"
+            : "command expired; issue a new one";
+
+    private string Ago(DateTimeOffset at)
+    {
+        var elapsed = Time.GetUtcNow() - at;
+        return elapsed switch
+        {
+            { TotalMinutes: < 1 } => "just now",
+            { TotalHours: < 1 } => $"{(int)elapsed.TotalMinutes} min ago",
+            { TotalDays: < 1 } => $"{(int)elapsed.TotalHours} h ago",
+            _ => $"{(int)elapsed.TotalDays} d ago",
+        };
+    }
+}

@@ -1,8 +1,8 @@
 # rest-o-matic-ui
 
 > **This project is still in development and is not ready for use.** Today
-> you can sign in, manage the app's users and see a placeholder page. None of
-> the backup features described below exist yet.
+> you can sign in, manage the app's users, and enrol hosts so they report to
+> the app. The rest of what is described below does not exist yet.
 
 A web app for watching and managing the backups of many servers from one
 place.
@@ -77,7 +77,12 @@ Done so far:
   Every user has the same rights. Signing in through an identity provider
   (OIDC) is planned as a second way in.
 
-Not built yet: everything under [What it will do](#what-it-will-do).
+- Enrolling hosts and receiving their check-ins: each host's latest status,
+  snapshot lists and config are kept, and the Hosts page lists them. See
+  [Adding a host](#adding-a-host).
+
+Not built yet: the rest of [What it will do](#what-it-will-do), starting
+with a landing page that shows which hosts' backups need attention.
 
 [docs/handoff.md](docs/handoff.md) lists what is planned and what is still
 missing. [docs/design/central-management.md](docs/design/central-management.md)
@@ -220,6 +225,40 @@ podman exec rest-o-matic-ui dotnet RestOMatic.Web.dll reset-password alice
 It prints a new password once. That user's
 existing sessions end. Sign in with the new password, then change it from
 **Profile** in the profile menu.
+
+## Adding a host
+
+A host needs [rest-o-matic](https://github.com/drewlsvern/rest-o-matic)
+`v0.2.0-rc.1` or later.
+
+1. In the app, open **Hosts** and choose **Add host**. Give it a name.
+2. The app shows a one-time command. It works once, for 24 hours:
+   ```sh
+    rest-o-matic enrol https://backups.example.com --token 7GxK2MPQ9SVW4TYB...
+   ```
+3. Run it on the host as the user that runs its backups, with the same
+   `--config` and `--state-dir` its scheduler uses. See rest-o-matic's
+   [central app guide](https://github.com/drewlsvern/rest-o-matic/blob/main/docs/central-app.md).
+
+From then on, each `tick` on the host checks in. The Hosts page shows when it
+last did, its versions and how many jobs it has. A host's config is sent
+only while every secret in it is locked; until then the host reports which
+fields keep it back.
+
+A lost command, or a host to be enrolled again, gets **New enrol command**.
+Once the host enrols with it, its old credential stops working. **Remove**
+deletes the host and what it reported, and its credential stops working.
+
+**The address in the command** is the one your browser used to reach the
+app. If hosts reach it by a different address, set `PublicUrl`, for example
+`-e PublicUrl=https://backups.example.com`. Hosts refuse plain `http://`
+unless enrolled with `--allow-http`, which is meant for testing only: the
+credential then travels unencrypted.
+
+**Large hosts.** A check-in is refused with `413` when it is larger than
+`CheckIn:MaxRequestBytes` (default 32 MiB, after decompression), and the
+app logs a warning naming the host. That fits about 70,000 snapshots. Raise
+it (`-e CheckIn__MaxRequestBytes=67108864`) if a host keeps more.
 
 ## Licence
 

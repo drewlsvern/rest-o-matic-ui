@@ -32,8 +32,8 @@ Before proposing or building anything, read:
 - Users sign in with a password; OIDC may be added later as a second method.
   Sessions live on the server. Every page and endpoint needs a signed-in
   user unless it opts out with `AllowAnonymous`, so a new endpoint is closed
-  by default. Host endpoints will need their own bearer scheme, not the
-  cookie.
+  by default. Host endpoints use their own `HostCredential` bearer scheme,
+  never the cookie.
 
 ## Code layout: vertical slices
 
@@ -92,4 +92,7 @@ by the `DataDirectory` setting (`./data` locally, `/data` in the image).
   not invent or change it here; propose the change there. It is written down
   in `../rest-o-matic/contract/`: `checkin/v1` for enrolment and check-ins,
   `validate/v1` for `validate --json`. Each has JSON Schemas and examples;
-  test this app's messages and parsing against those files.
+  test this app's messages and parsing against those files. `checkin/v1` is
+  copied into `contract/` here so CI can test against it; run
+  `scripts/sync-contract.sh` after the host changes it, and never edit the
+  copy.
