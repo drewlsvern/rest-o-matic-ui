@@ -60,3 +60,15 @@ h1:focus {
     height: 100%;
     object-fit: cover;
 }
+
+/* The enrol command: long, so it wraps rather than scrolling the dialog. */
+.enrol-command code {
+    word-break: break-all;
+    font-size: 0.875rem;
+}
+
+/* The hosts grid: headers and the waiting state stay on one line. */
+.hosts-grid th,
+.hosts-grid [data-testid="token-expiry"] {
+    white-space: nowrap;
+}

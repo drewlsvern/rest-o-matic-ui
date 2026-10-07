@@ -1,0 +1,69 @@
+@using Microsoft.Extensions.Options
+@inject IOptions<HostsOptions> Options
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+@* The one-time command that enrols a host. Shown once: the token is not stored anywhere it could be read again. *@
+
+<MudText Typo="Typo.body2" Class="mb-2">
+    Run this on <strong>@HostName</strong>, as the user that runs its backups. It works once, until
+    @Utc(Token.ExpiresAt).
+</MudText>
+<MudPaper Outlined="true" Class="pa-3 d-flex align-center gap-2 enrol-command">
+    <code class="flex-grow-1" data-testid="enrol-command">@Command</code>
+    <MudTooltip Text="Copy">
+        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" aria-label="Copy the command"
+                       OnClick="CopyAsync" />
+    </MudTooltip>
+</MudPaper>
+<MudText Typo="Typo.caption" Class="mt-2 d-block">
+    The token is shown only now. If it is lost, issue a new enrol command for this host. The copy button adds a
+    leading space, which keeps the command out of bash's history when <code>HISTCONTROL</code> is
+    <code>ignorespace</code> or <code>ignoreboth</code>.
+</MudText>
+@if (Address.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+{
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+        This address is plain HTTP. A host refuses it unless enrolled with <code>--allow-http</code>, which is meant
+        for testing. Set <code>PublicUrl</code> to the HTTPS address hosts should use.
+    </MudAlert>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public string HostName { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public IssuedToken Token { get; set; } = default!;
+
+    /// <summary>The server's clock is all a page has, so times are shown in UTC and say so.</summary>
+    public static string Utc(DateTimeOffset time) => time.UtcDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC";
+
+    private string Address => AddressFor(Options.Value.PublicUrl, Navigation.BaseUri);
+
+    private string Command => $"rest-o-matic enrol {Address} --token {Token.Token}";
+
+    /// <summary>
+    /// <c>PublicUrl</c> when set, otherwise the address the browser used, as
+    /// the request that started this page saw it (through the reverse proxy).
+    /// </summary>
+    public static string AddressFor(string? publicUrl, string baseUri) =>
+        (string.IsNullOrWhiteSpace(publicUrl) ? baseUri : publicUrl).TrimEnd('/');
+
+    private async Task CopyAsync()
+    {
+        try
+        {
+            // The leading space keeps the token out of bash's history where
+            // HISTCONTROL ignores space-prefixed commands, as rest-o-matic's docs suggest.
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", " " + Command);
+            Snackbar.Add("Command copied.", Severity.Success);
+        }
+        catch (JSException)
+        {
+            // The clipboard needs a secure context; plain HTTP away from localhost has none.
+            Snackbar.Add("The browser would not copy it. Select the command and copy it by hand.", Severity.Warning);
+        }
+    }
+}
