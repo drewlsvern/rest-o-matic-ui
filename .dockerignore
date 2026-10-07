@@ -15,6 +15,7 @@ src/RestOMatic.Web/data/
 .claude/
 docs/
 openspec/
+contract/
 tests/
 *.md
 Containerfile
